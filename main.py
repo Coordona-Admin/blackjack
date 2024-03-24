@@ -1,6 +1,8 @@
 import os
 import random
 
+from wallet import Wallet
+
 
 def create_deck():
 
@@ -25,13 +27,13 @@ def shuffle_shoe(shoe:list):
     random.shuffle(shoe)
     return shoe
 
-def deal_card(shoe:list, number_of_cards:int):
+def deal_card(shoe:list, number_of_cards:int) -> list:
     cards = []
     for i in range(number_of_cards):
         cards.append(shoe.pop())
     return cards
 
-def print_hand(hand:list, mask_first_card:bool=False, show_score:bool=False):
+def print_hand(hand:list, mask_first_card:bool=False, show_score:bool=False) -> None:
     for card_number, card in enumerate(hand):
         if mask_first_card and card_number == 0:
             print(f"XX ", end="")
@@ -43,7 +45,7 @@ def print_hand(hand:list, mask_first_card:bool=False, show_score:bool=False):
     print()
 
 def show_table(dealer_hand:list, player_hand:list, mask_dealer:bool=True, 
-               show_player_score:bool=False, show_dealer_score:bool=False):
+               show_player_score:bool=False, show_dealer_score:bool=False) -> None:
     
     os.system("cls")
     print("Dealer's Hand")  
@@ -52,6 +54,19 @@ def show_table(dealer_hand:list, player_hand:list, mask_dealer:bool=True,
     print_hand(player_hand, show_score=show_player_score)
 
 def score_hand(hand:list) -> int:
+
+    # Move any aces to the end of the list - we need to handle those scores based on the other
+    # cards in the hand.  For instance if the player has an A, 3, K unsorted it would bust at 24, but it should be 14.
+    sorted_hand = []
+    for card in hand:
+        if "A" in card:
+            # Move the A to the end of the list
+            sorted_hand.append(card)
+        else:
+            # Add the card to the front of the list
+            sorted_hand.insert(0, card)
+    hand = sorted_hand
+
     score = 0
     for card in hand:
         if "2" in card:
@@ -84,25 +99,63 @@ def score_hand(hand:list) -> int:
             score += 11
     return score
 
-def print_results(player_hand:list, dealer_hand:list) -> None:
-    if score_hand(player_hand) > 21:
-        print("You busted - You lose!")
-    elif score_hand(dealer_hand) > 21:
-        print("Delaer busted - You Won!")
-    elif score_hand(player_hand) > score_hand(dealer_hand):
-        print("You Win!")
-    elif score_hand(player_hand) < score_hand(dealer_hand):
-        print("You Lose!")
-    elif score_hand(player_hand) == score_hand(dealer_hand):
-        print("It's a Push!")
+def game_results(player_hand:list, dealer_hand:list, player_blackjack: bool, bet: int) -> float:
 
-def play_blackjack():
+    if player_blackjack:
+        print(f"BLACKJACK!  You won{bet * 1.5}")
+        return (bet * 1.5)
+    
+    player_score = score_hand(player_hand)
+    dealer_score = score_hand(dealer_hand)
+    
+    if player_score > 21:
+        print(f"You busted - You lose {bet}")
+        return -bet
+    if dealer_score > 21:
+        print(f"Dealer busted - You Won {bet}!")
+        return bet
+    if player_score > dealer_score:
+        print(f"You Win {bet}!")
+        return bet
+    if player_score < dealer_score:
+        print(f"You Lose {bet}!")
+        return -bet
+    if player_score == dealer_score:
+        print("It's a Push!  No money changes hand.")
+        return 0
+    
+    # If we get here we missed something major  :)
+    return 0
+
+def print_wallet(wallet:Wallet) -> None:
+    print (f"Balance: {wallet.balance}")
+
+def play_blackjack(wallet:Wallet) -> None:
     os.system("cls")
     
     player_busted = False
+    player_blackjack = False
     
     shoe = create_shoe(5)
     shoe = shuffle_shoe(shoe)
+
+    # Loop until player gives a valid bet.
+    print_wallet(wallet)
+    while True:
+        bet = input("How much would you like to bet?")
+        try:
+            bet = float(bet)
+            if float(bet) <= 0:
+                print("Please enter a positive number.")
+                continue
+            if float(bet) > wallet.balance:
+                print(f"You don't have enough money to bet {bet}.")
+                continue
+            break
+
+        except ValueError:
+            print("Please enter a number.")
+            continue
 
     # Deal the initial hands
     dealer_hand = deal_card(shoe, 2)
@@ -111,8 +164,10 @@ def play_blackjack():
     show_table(dealer_hand, player_hand, mask_dealer=True, show_player_score=True)
 
     # If the player has a blackjack then we're done
-    if score_hand(player_hand) != 21:
-
+    if score_hand(player_hand) == 21:
+        player_blackjack = True
+    
+    else:
         # Loop until player stands or busts
         while True:
             user_input = input("(H)it or (S)tand? ").lower()
@@ -134,13 +189,22 @@ def play_blackjack():
             dealer_hand.extend(deal_card(shoe, 1))
 
     show_table(dealer_hand, player_hand, mask_dealer=False, show_player_score=True, show_dealer_score=True)
-    print_results(player_hand, dealer_hand)
+    wallet.balance += game_results(player_hand, dealer_hand, player_blackjack, bet)
     
 if __name__ == '__main__':
-    while True:
-        play_blackjack()
 
+    wallet = Wallet(500)
+        
+    while True:
+        play_blackjack(wallet)
+
+        if wallet.balance <= 0:
+            print(f"You lost all your money.  Goodbye!\n\n")
+            break
+
+        print_wallet(wallet)
         play_again_input = input("Would you like to play again? (Y/N) ").lower()
         if play_again_input != "y":
+            print(f"Thank you for playing!  You ended up with a balance of:{wallet.balance}\n\n")
             break
         
